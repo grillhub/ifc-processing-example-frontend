@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CU Digital Platform</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Theme Toggle -->
+    <div class="theme-toggle">
+        <button id="themeToggle" class="theme-btn" aria-label="Toggle theme">
+            <i class="fas fa-moon theme-icon"></i>
+        </button>
+    </div>
+
+    <main class="container">
+        <!-- Header -->
+        <header class="hero">
+            <div class="hero-content">
+                <h1 class="hero-title">CU Digital Platform</h1>
+                <p class="hero-subtitle">Application for CU Digital Campus</p>
+            </div>
+        </header>
+
+        <div class="content">
+            <!-- File Upload Section -->
+            <article class="card upload-section">
+                <div class="card-header-with-status">
+                    <header>
+                        <h2>Add a new BIM version to the web application</h2>
+                    </header>
+                    <div class="server-status" id="serverStatus">Checking Server...</div>
+                </div>
+                <form id="uploadForm">
+                    <div class="grid">
+                        <div>
+                            <label for="ifcFile">IFC File *</label>
+                            <div class="ifc-file-container">
+                                <div class="custom-file-input">
+                                    <input type="file" id="ifcFile" name="file" accept=".ifc" required>
+                                    <label for="ifcFile" class="file-input-label">Choose a BIM IFC file</label>
+                                </div>
+                                <div class="file-name-display" id="fileNameDisplay">
+                                    <span>No file selected</span>
+                                </div>
+                            </div>
+                            <small id="fileInputText" hidden>Choose a BIM IFC file</small>
+                        </div>
+                        <div>
+                            <label for="buildingId">Building ID * <i class="fa-solid fa-circle-info building-id-info-icon" onclick="showBuildingIdInfo()"></i></label>
+                            <input id="buildingId" name="buildingId" placeholder="ID of building for this BIM e.g., CEN001" required>
+                        </div>
+                    </div>
+
+                    <div class="grid">
+                        <div>
+                            <label for="selectedLOD">User Interest in Level of Detail (Optional)</label>
+                            <select id="selectedLOD" name="selectedLOD">
+                                <option value="default">Default LOD</option>
+                                <option value="space">Space LOD</option>
+                                <option value="ac">AC LOD</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="description">Description (Optional)</label>
+                            <input type="text" id="description" name="description" placeholder="Description of the building">
+                        </div>
+                    </div>
+
+                    <!-- CSV Files Section -->
+                    <div class="csv-section-inline">
+                        <h3>Additional Info files to be merge with this BIM file (Optional)</h3>
+                        <div id="csvFilesContainer">
+                            <!-- CSV files will be added here dynamically -->
+                        </div>
+                        <button type="button" class="btn-secondary" onclick="addCsvFile()">
+                            <span>+</span> Add CSV File
+                        </button>
+                    </div>
+
+                    <button type="submit" class="btn-primary" id="uploadBtn">
+                        <span class="btn-text">Add a new BIM version to the web application</span>
+                        <span class="btn-spinner" style="display: none;">⏳</span>
+                    </button>
+                </form>
+            </article>
+
+            <!-- Status Section -->
+            <article class="card status-section" id="statusSection" style="display: none;">
+                <div class="status-content">
+                    <!-- Main Title -->
+                    <h2 class="status-title">
+                        Adding the BIM file to CU Digital Campus Building ID: 
+                        <span class="building-id-highlight" id="buildingIdHighlight">Loading...</span>
+                    </h2>
+                    
+                    <!-- Subtitle -->
+                    <p class="status-subtitle">This may take a few moments.</p>
+                    
+                    <!-- Large Spinning Loader -->
+                    <div class="large-spinner-container">
+                        <div class="large-spinner">
+                            <!-- File Icon Inside Spinner -->
+                            <div class="spinner-content">
+                                <div class="file-icon">
+                                    <div class="file-icon-paper">
+                                        <div class="file-icon-lines"></div>
+                                        <div class="file-icon-corner"></div>
+                                        <div class="file-icon-label">IFC</div>
+                                    </div>
+                                </div>
+                                <div class="file-name" id="spinnerFileName">Loading...</div>
+                                <div class="processing-text" id="processingText">Processing...</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Additional Status Info -->
+                    <div class="status-details">
+                        <div class="status-detail-item">
+                            <span class="detail-label">Status:</span>
+                            <span class="detail-value" id="statusValue">Processing</span>
+                        </div>
+                        <div class="status-detail-item">
+                            <span class="detail-label">Progress:</span>
+                            <span class="detail-value" id="progressValue">0%</span>
+                        </div>
+                        <div class="status-detail-item">
+                            <span class="detail-label">Processing ID:</span>
+                            <span class="detail-value" id="processingIdValue">-</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="status-actions" id="statusActions" style="display: none;">
+                    <button type="button" class="btn-primary" onclick="backToUpload()">
+                        Back to Add a new BIM version to the web application
+                    </button>
+                </div>
+            </article>
+
+            <!-- Completed Section -->
+            <article class="card completed-section" id="completedSection" style="display: none;">
+                <div class="completed-content">
+                    <!-- Title -->
+                    <h2 class="completed-title">Complete!</h2>
+                    
+                    <!-- Subtitle -->
+                    <p class="completed-subtitle">
+                        Your BIM file has been successfully added to the CU Digital Campus web application for Building ID: 
+                        <span class="building-id-link" id="completedBuildingId">CEN047</span>.
+                    </p>
+                    
+                    <!-- Thumbnail -->
+                    <div class="completed-thumbnail-container">
+                        <img id="completedThumbnailImage" src="" alt="Building Thumbnail" class="completed-thumbnail-image">
+                    </div>
+                    
+                    <!-- Action Buttons -->
+                    <div class="completed-buttons">
+                        <div class="completed-buttons-row">
+                            <button class="completed-btn completed-btn-primary" id="completedLaunchAreaMapBtn" onclick="launchAreaMap()">
+                                Launch the area map page
+                            </button>
+                            <button class="completed-btn completed-btn-primary" id="completedLaunchBimBtn" onclick="launchBim()">
+                                Launch the BIM page
+                            </button>
+                        </div>
+                        <div class="completed-buttons-row">
+                            <button class="completed-btn completed-btn-secondary" onclick="backToUpload()">
+                                ← Go back to add more
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <!-- Loading Section -->
+            <div class="loading-overlay" id="loadingSection" style="display: none;">
+                <div class="loading-content">
+                    <div class="spinner"></div>
+                    <p>Processing your IFC file...</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Building ID Info Modal -->
+    <div id="buildingIdInfoModal" class="info-modal" style="display: none;">
+        <div class="info-modal-content">
+            <div class="info-modal-header">
+                <h3>How to get Building ID</h3>
+                <button class="info-modal-close" onclick="hideBuildingIdInfo()">&times;</button>
+            </div>
+            <div class="info-modal-body">
+                <p>To find the correct Building ID for your BIM file, please visit the CU Digital Campus map:</p>
+                <div class="info-modal-link-container">
+                    <a href="http://teststaticwebappcu002.s3-website-ap-southeast-1.amazonaws.com/appSpatial0.0.14/" 
+                       target="_blank" 
+                       class="info-modal-link">
+                        <i class="fas fa-external-link-alt"></i>
+                        View building IDs in the map
+                    </a>
+                </div>
+                <p class="info-modal-note">
+                    <strong>Note:</strong> The Building ID should match the identifier used in the CU Digital Campus system (e.g., CEN001, CEN047, etc.).
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
