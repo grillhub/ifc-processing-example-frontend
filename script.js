@@ -1,6 +1,7 @@
-// API Endpoints Configuration
-const API_BASE_URL = 'http://18.139.3.122:8080';
-const CSV_SCHEMA_URL = 'https://cudigitalresource.s3.ap-southeast-1.amazonaws.com/CSVSchema.json';
+// API Endpoints Configuration (loaded from settings.json)
+let API_BASE_URL = null;
+let MAIN_ENDPOINT = null;
+let CSV_SCHEMA_URL = null;
 
 let currentProcessingId = null;
 let statusInterval = null;
@@ -11,12 +12,42 @@ let csvSchema = null; // Store CSV schema data
 // Theme management
 let currentTheme = localStorage.getItem('theme') || 'light';
 
-// Check server status on load
-window.addEventListener('load', function() {
+// Load settings from settings.json
+async function loadSettings() {
+    try {
+        const response = await fetch('settings.json');
+        if (!response.ok) {
+            throw new Error('Failed to load settings.json');
+        }
+        const settings = await response.json();
+        
+        API_BASE_URL = settings.API_BASE_URL;
+        MAIN_ENDPOINT = settings.MAIN_ENDPOINT;
+        CSV_SCHEMA_URL = MAIN_ENDPOINT + 'CSVSchema.json';
+        
+        console.log('Settings loaded successfully:', { API_BASE_URL, MAIN_ENDPOINT });
+    } catch (error) {
+        console.error('Error loading settings:', error);
+        // Fallback to default values if settings.json cannot be loaded
+        API_BASE_URL = 'http://localhost:8080';
+        MAIN_ENDPOINT = 'https://example-bucket.s3.ap-southeast-1.amazonaws.com/';
+        CSV_SCHEMA_URL = MAIN_ENDPOINT + 'CSVSchema.json';
+        showAlert('Warning: Could not load settings.json. Using default configuration.', 'error');
+    }
+}
+
+// Initialize application after settings are loaded
+async function initializeApp() {
+    await loadSettings();
     checkServerStatus();
     fetchCsvSchema();
     initializeTheme();
     initializeAnimations();
+}
+
+// Check server status on load
+window.addEventListener('load', function() {
+    initializeApp();
 });
 
 // File input handling
