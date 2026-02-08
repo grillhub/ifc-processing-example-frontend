@@ -1,7 +1,9 @@
 // API Endpoints Configuration (loaded from settings.json)
 let API_BASE_URL = null;
 let MAIN_ENDPOINT = null;
+let AUTH_ENDPOINT = null;
 let CSV_SCHEMA_URL = null;
+let accessToken = null; // Store access token after login
 
 let currentProcessingId = null;
 let statusInterval = null;
@@ -23,14 +25,16 @@ async function loadSettings() {
         
         API_BASE_URL = settings.API_BASE_URL;
         MAIN_ENDPOINT = settings.MAIN_ENDPOINT;
+        AUTH_ENDPOINT = settings.AUTH_ENDPOINT;
         CSV_SCHEMA_URL = MAIN_ENDPOINT + 'CSVSchema.json';
         
-        console.log('Settings loaded successfully:', { API_BASE_URL, MAIN_ENDPOINT });
+        console.log('Settings loaded successfully:', { API_BASE_URL, MAIN_ENDPOINT, AUTH_ENDPOINT });
     } catch (error) {
         console.error('Error loading settings:', error);
         // Fallback to default values if settings.json cannot be loaded
         API_BASE_URL = 'http://localhost:8080';
         MAIN_ENDPOINT = 'https://example-bucket.s3.ap-southeast-1.amazonaws.com/';
+        AUTH_ENDPOINT = 'http://localhost:8081';
         CSV_SCHEMA_URL = MAIN_ENDPOINT + 'CSVSchema.json';
         showAlert('Warning: Could not load settings.json. Using default configuration.', 'error');
     }
@@ -39,15 +43,92 @@ async function loadSettings() {
 // Initialize application after settings are loaded
 async function initializeApp() {
     await loadSettings();
-    checkServerStatus();
-    fetchCsvSchema();
+    
+    // Check if user is already logged in
+    accessToken = localStorage.getItem('accessToken');
+    if (accessToken) {
+        showMainApp();
+    } else {
+        showLoginPage();
+    }
+    
     initializeTheme();
     initializeAnimations();
+}
+
+// Show login page
+function showLoginPage() {
+    document.getElementById('loginSection').style.display = 'block';
+    document.getElementById('uploadSection').style.display = 'none';
+    document.getElementById('statusSection').style.display = 'none';
+    document.getElementById('completedSection').style.display = 'none';
+}
+
+// Show main application after login
+function showMainApp() {
+    document.getElementById('loginSection').style.display = 'none';
+    document.getElementById('uploadSection').style.display = 'block';
+    checkServerStatus();
+    fetchCsvSchema();
+}
+
+// Login function
+async function handleLogin(event) {
+    event.preventDefault();
+    
+    const email = document.getElementById('userEmail').value;
+    const password = document.getElementById('userPassword').value;
+    const loginBtn = document.getElementById('loginBtn');
+    const btnText = loginBtn.querySelector('.btn-text');
+    const btnSpinner = loginBtn.querySelector('.btn-spinner');
+    
+    loginBtn.disabled = true;
+    btnText.textContent = 'Signing in...';
+    btnSpinner.style.display = 'inline';
+    
+    try {
+        const response = await fetch(AUTH_ENDPOINT, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                action: 'signin',
+                user: email,
+                pass: password
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success && result.authResult && result.authResult.accessToken) {
+            accessToken = result.authResult.accessToken;
+            localStorage.setItem('accessToken', accessToken);
+            showAlert('Login successful!', 'success');
+            showMainApp();
+        } else {
+            showAlert('Login failed: ' + (result.message || 'Invalid credentials'), 'error');
+        }
+    } catch (error) {
+        showAlert('Login failed: ' + error.message, 'error');
+    } finally {
+        loginBtn.disabled = false;
+        btnText.textContent = 'Sign In';
+        btnSpinner.style.display = 'none';
+    }
 }
 
 // Check server status on load
 window.addEventListener('load', function() {
     initializeApp();
+});
+
+// Login form submission
+document.addEventListener('DOMContentLoaded', function() {
+    const loginForm = document.getElementById('loginForm');
+    if (loginForm) {
+        loginForm.addEventListener('submit', handleLogin);
+    }
 });
 
 // File input handling
@@ -460,7 +541,7 @@ function updateStatusDisplay(status) {
 
 function showStatusSection() {
     // Hide the upload section and show only status section
-    document.querySelector('.upload-section').style.display = 'none';
+    document.getElementById('uploadSection').style.display = 'none';
     document.getElementById('statusSection').style.display = 'block';
     
     // Update building ID highlight
@@ -489,12 +570,17 @@ function showCompletedSection(status) {
     // Show thumbnail if available
     if (status.metadata && status.metadata.thumbnailUrl) {
         const completedThumbnailImage = document.getElementById('completedThumbnailImage');
-        completedThumbnailImage.src = status.metadata.thumbnailUrl;
+        // Add token parameter to thumbnailUrl
+        const thumbnailUrl = status.metadata.thumbnailUrl;
+        const separator = thumbnailUrl.includes('?') ? '&' : '?';
+        completedThumbnailImage.src = thumbnailUrl + separator + 'token=' + encodeURIComponent(accessToken || '');
         completedThumbnailImage.style.display = 'block';
         
         // Handle image load error
         completedThumbnailImage.onerror = function() {
-            console.warn('Failed to load thumbnail:', status.metadata.thumbnailUrl);
+            const thumbnailUrl = status.metadata.thumbnailUrl;
+            const separator = thumbnailUrl.includes('?') ? '&' : '?';
+            console.warn('Failed to load thumbnail:', thumbnailUrl + separator + 'token=' + encodeURIComponent(accessToken || ''));
             completedThumbnailImage.style.display = 'none';
         };
     } else {
@@ -913,8 +999,9 @@ function showThumbnail(thumbnailUrl) {
     const thumbnailSection = document.getElementById('thumbnailSection');
     const thumbnailImage = document.getElementById('thumbnailImage');
     
-    // Set the image source
-    thumbnailImage.src = thumbnailUrl;
+    // Add token parameter to thumbnailUrl
+    const separator = thumbnailUrl.includes('?') ? '&' : '?';
+    thumbnailImage.src = thumbnailUrl + separator + 'token=' + encodeURIComponent(accessToken || '');
     
     // Show the thumbnail section
     thumbnailSection.style.display = 'flex';
@@ -928,7 +1015,8 @@ function showThumbnail(thumbnailUrl) {
     
     // Handle image load error
     thumbnailImage.onerror = function() {
-        console.warn('Failed to load thumbnail:', thumbnailUrl);
+        const separator = thumbnailUrl.includes('?') ? '&' : '?';
+        console.warn('Failed to load thumbnail:', thumbnailUrl + separator + 'token=' + encodeURIComponent(accessToken || ''));
         thumbnailSection.style.display = 'none';
     };
 }
@@ -948,10 +1036,12 @@ function launchBim() {
         const buildingId = document.getElementById('buildingId').value;
         const baseVersion = processingMetadata.totalBIMversion || processingMetadata.buildingVersion || '1';
         const version = (parseInt(baseVersion) + 1).toString();
+        // Add token parameter to individualBimEndpoint
         const bimUrl = processingMetadata.individualBimEndpoint + 
             '?building_id=' + encodeURIComponent(buildingId) + 
             '&v=' + encodeURIComponent(version) + 
-            '&p=full&d=normal';
+            '&p=full&d=normal' +
+            '&token=' + encodeURIComponent(accessToken || '');
         window.open(bimUrl, '_blank');
     } else {
         showAlert('BIM endpoint not available', 'error');
@@ -998,7 +1088,7 @@ document.addEventListener('keydown', function(event) {
 // Back to upload function
 function backToUpload() {
     // Show upload section and hide all other sections
-    document.querySelector('.upload-section').style.display = 'block';
+    document.getElementById('uploadSection').style.display = 'block';
     document.getElementById('statusSection').style.display = 'none';
     document.getElementById('completedSection').style.display = 'none';
     document.getElementById('statusActions').style.display = 'none';

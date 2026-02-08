@@ -26,8 +26,29 @@
         </header>
 
         <div class="content">
+            <!-- Login Section -->
+            <article class="card login-section" id="loginSection">
+                <header>
+                    <h2>Login</h2>
+                </header>
+                <form id="loginForm">
+                    <div>
+                        <label for="userEmail">Email</label>
+                        <input type="email" id="userEmail" name="user" placeholder="Enter your email" required>
+                    </div>
+                    <div>
+                        <label for="userPassword">Password</label>
+                        <input type="password" id="userPassword" name="pass" placeholder="Enter your password" required>
+                    </div>
+                    <button type="submit" class="btn-primary" id="loginBtn">
+                        <span class="btn-text">Sign In</span>
+                        <span class="btn-spinner" style="display: none;">⏳</span>
+                    </button>
+                </form>
+            </article>
+
             <!-- File Upload Section -->
-            <article class="card upload-section">
+            <article class="card upload-section" id="uploadSection" style="display: none;">
                 <div class="card-header-with-status">
                     <header>
                         <h2>Add a new BIM version to the web application</h2>
