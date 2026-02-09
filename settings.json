@@ -1,6 +1,7 @@
 {
-  "API_BASE_URL": "http://localhost:8080",
-  "MAIN_ENDPOINT": "https://example-bucket.s3.ap-southeast-1.amazonaws.com/",
-  "AUTH_ENDPOINT": "http://localhost:8081"
+  "API_BASE_URL": "",
+  "MAIN_ENDPOINT": "",
+  "AUTH_ENDPOINT": "",
+  "CLOUDFRONT_AUTH_ENDPOINT": ""
 }
 

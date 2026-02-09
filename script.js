@@ -2,8 +2,11 @@
 let API_BASE_URL = null;
 let MAIN_ENDPOINT = null;
 let AUTH_ENDPOINT = null;
+let CLOUDFRONT_AUTH_ENDPOINT = null;
 let CSV_SCHEMA_URL = null;
 let accessToken = null; // Store access token after login
+// CloudFront auth result: query string "Policy=...&Signature=...&Key-Pair-Id=..."
+let cloudfrontToken = "";
 
 let currentProcessingId = null;
 let statusInterval = null;
@@ -26,15 +29,17 @@ async function loadSettings() {
         API_BASE_URL = settings.API_BASE_URL;
         MAIN_ENDPOINT = settings.MAIN_ENDPOINT;
         AUTH_ENDPOINT = settings.AUTH_ENDPOINT;
+        CLOUDFRONT_AUTH_ENDPOINT = settings.CLOUDFRONT_AUTH_ENDPOINT || null;
         CSV_SCHEMA_URL = MAIN_ENDPOINT + 'CSVSchema.json';
         
-        console.log('Settings loaded successfully:', { API_BASE_URL, MAIN_ENDPOINT, AUTH_ENDPOINT });
+        console.log('Settings loaded successfully:', { API_BASE_URL, MAIN_ENDPOINT, AUTH_ENDPOINT, CLOUDFRONT_AUTH_ENDPOINT });
     } catch (error) {
         console.error('Error loading settings:', error);
         // Fallback to default values if settings.json cannot be loaded
         API_BASE_URL = 'http://localhost:8080';
         MAIN_ENDPOINT = 'https://example-bucket.s3.ap-southeast-1.amazonaws.com/';
         AUTH_ENDPOINT = 'http://localhost:8081';
+        CLOUDFRONT_AUTH_ENDPOINT = null;
         CSV_SCHEMA_URL = MAIN_ENDPOINT + 'CSVSchema.json';
         showAlert('Warning: Could not load settings.json. Using default configuration.', 'error');
     }
@@ -47,6 +52,7 @@ async function initializeApp() {
     // Check if user is already logged in
     accessToken = localStorage.getItem('accessToken');
     if (accessToken) {
+        await requestCloudFrontAuth();
         showMainApp();
     } else {
         showLoginPage();
@@ -70,6 +76,60 @@ function showMainApp() {
     document.getElementById('uploadSection').style.display = 'block';
     checkServerStatus();
     fetchCsvSchema();
+}
+
+// Request CloudFront auth: POST to CLOUDFRONT_AUTH_ENDPOINT with Bearer token;
+// sets MAIN_ENDPOINT, CSV_SCHEMA_URL, and cloudfrontToken (Policy&Signature&Key-Pair-Id) from response.
+async function requestCloudFrontAuth() {
+    cloudfrontToken = "";
+    if (!CLOUDFRONT_AUTH_ENDPOINT || !accessToken) {
+        return true;
+    }
+    try {
+        const response = await fetch(CLOUDFRONT_AUTH_ENDPOINT, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + accessToken
+            }
+        });
+        if (!response.ok) {
+            console.warn('CloudFront auth request failed:', response.status, response.statusText);
+            return false;
+        }
+        const auth = await response.json();
+        if (!auth || !auth.success || !auth.cookies) {
+            console.warn('CloudFront auth response invalid or success=false.');
+            return false;
+        }
+        let resourceScope = (auth.resourceScope || "").replace(/\*+$/, '').trim();
+        if (!resourceScope) {
+            console.warn('CloudFront auth resourceScope missing.');
+            return false;
+        }
+        MAIN_ENDPOINT = resourceScope.endsWith('/') ? resourceScope : resourceScope + '/';
+        CSV_SCHEMA_URL = MAIN_ENDPOINT + 'CSVSchema.json';
+        const c = auth.cookies;
+        const parts = [];
+        if (c.CloudFrontPolicy) parts.push('Policy=' + encodeURIComponent(c.CloudFrontPolicy));
+        if (c.CloudFrontSignature) parts.push('Signature=' + encodeURIComponent(c.CloudFrontSignature));
+        if (c.CloudFrontKeyPairId) parts.push('Key-Pair-Id=' + encodeURIComponent(c.CloudFrontKeyPairId));
+        cloudfrontToken = parts.join('&');
+        console.log('CloudFront auth success.');
+        return true;
+    } catch (ex) {
+        console.warn('CloudFront auth error:', ex.message);
+        return false;
+    }
+}
+
+// Build thumbnail URL with CloudFront Policy/Signature/Key-Pair-Id or token.
+function buildThumbnailUrl(thumbnailUrl) {
+    const separator = thumbnailUrl.includes('?') ? '&' : '?';
+    if (cloudfrontToken) {
+        return thumbnailUrl + separator + cloudfrontToken;
+    }
+    return thumbnailUrl + separator + 'token=' + encodeURIComponent(accessToken || '');
 }
 
 // Login function
@@ -104,6 +164,7 @@ async function handleLogin(event) {
         if (result.success && result.authResult && result.authResult.accessToken) {
             accessToken = result.authResult.accessToken;
             localStorage.setItem('accessToken', accessToken);
+            await requestCloudFrontAuth();
             showAlert('Login successful!', 'success');
             showMainApp();
         } else {
@@ -570,17 +631,12 @@ function showCompletedSection(status) {
     // Show thumbnail if available
     if (status.metadata && status.metadata.thumbnailUrl) {
         const completedThumbnailImage = document.getElementById('completedThumbnailImage');
-        // Add token parameter to thumbnailUrl
-        const thumbnailUrl = status.metadata.thumbnailUrl;
-        const separator = thumbnailUrl.includes('?') ? '&' : '?';
-        completedThumbnailImage.src = thumbnailUrl + separator + 'token=' + encodeURIComponent(accessToken || '');
+        completedThumbnailImage.src = buildThumbnailUrl(status.metadata.thumbnailUrl);
         completedThumbnailImage.style.display = 'block';
         
         // Handle image load error
         completedThumbnailImage.onerror = function() {
-            const thumbnailUrl = status.metadata.thumbnailUrl;
-            const separator = thumbnailUrl.includes('?') ? '&' : '?';
-            console.warn('Failed to load thumbnail:', thumbnailUrl + separator + 'token=' + encodeURIComponent(accessToken || ''));
+            console.warn('Failed to load thumbnail:', buildThumbnailUrl(status.metadata.thumbnailUrl));
             completedThumbnailImage.style.display = 'none';
         };
     } else {
@@ -999,9 +1055,7 @@ function showThumbnail(thumbnailUrl) {
     const thumbnailSection = document.getElementById('thumbnailSection');
     const thumbnailImage = document.getElementById('thumbnailImage');
     
-    // Add token parameter to thumbnailUrl
-    const separator = thumbnailUrl.includes('?') ? '&' : '?';
-    thumbnailImage.src = thumbnailUrl + separator + 'token=' + encodeURIComponent(accessToken || '');
+    thumbnailImage.src = buildThumbnailUrl(thumbnailUrl);
     
     // Show the thumbnail section
     thumbnailSection.style.display = 'flex';
@@ -1015,8 +1069,7 @@ function showThumbnail(thumbnailUrl) {
     
     // Handle image load error
     thumbnailImage.onerror = function() {
-        const separator = thumbnailUrl.includes('?') ? '&' : '?';
-        console.warn('Failed to load thumbnail:', thumbnailUrl + separator + 'token=' + encodeURIComponent(accessToken || ''));
+        console.warn('Failed to load thumbnail:', buildThumbnailUrl(thumbnailUrl));
         thumbnailSection.style.display = 'none';
     };
 }
