@@ -29,17 +29,15 @@ async function loadSettings() {
         API_BASE_URL = settings.API_BASE_URL;
         MAIN_ENDPOINT = settings.MAIN_ENDPOINT;
         AUTH_ENDPOINT = settings.AUTH_ENDPOINT;
-        CLOUDFRONT_AUTH_ENDPOINT = settings.CLOUDFRONT_AUTH_ENDPOINT || null;
+        CLOUDFRONT_AUTH_ENDPOINT = settings.CLOUDFRONT_AUTH_ENDPOINT;
         CSV_SCHEMA_URL = MAIN_ENDPOINT + 'CSVSchema.json';
         
-        console.log('Settings loaded successfully:', { API_BASE_URL, MAIN_ENDPOINT, AUTH_ENDPOINT, CLOUDFRONT_AUTH_ENDPOINT });
     } catch (error) {
         console.error('Error loading settings:', error);
-        // Fallback to default values if settings.json cannot be loaded
-        API_BASE_URL = 'http://localhost:8080';
-        MAIN_ENDPOINT = 'https://example-bucket.s3.ap-southeast-1.amazonaws.com/';
-        AUTH_ENDPOINT = 'http://localhost:8081';
-        CLOUDFRONT_AUTH_ENDPOINT = null;
+        API_BASE_URL = '';
+        MAIN_ENDPOINT = '';
+        AUTH_ENDPOINT = '';
+        CLOUDFRONT_AUTH_ENDPOINT = '';
         CSV_SCHEMA_URL = MAIN_ENDPOINT + 'CSVSchema.json';
         showAlert('Warning: Could not load settings.json. Using default configuration.', 'error');
     }
@@ -49,7 +47,6 @@ async function loadSettings() {
 async function initializeApp() {
     await loadSettings();
     
-    // Check if user is already logged in
     accessToken = localStorage.getItem('accessToken');
     if (accessToken) {
         await requestCloudFrontAuth();
@@ -78,8 +75,6 @@ function showMainApp() {
     fetchCsvSchema();
 }
 
-// Request CloudFront auth: POST to CLOUDFRONT_AUTH_ENDPOINT with Bearer token;
-// sets MAIN_ENDPOINT, CSV_SCHEMA_URL, and cloudfrontToken (Policy&Signature&Key-Pair-Id) from response.
 async function requestCloudFrontAuth() {
     cloudfrontToken = "";
     if (!CLOUDFRONT_AUTH_ENDPOINT || !accessToken) {
@@ -110,10 +105,13 @@ async function requestCloudFrontAuth() {
         MAIN_ENDPOINT = resourceScope.endsWith('/') ? resourceScope : resourceScope + '/';
         CSV_SCHEMA_URL = MAIN_ENDPOINT + 'CSVSchema.json';
         const c = auth.cookies;
+        const policy = c['CloudFront-Policy'] ?? c.CloudFrontPolicy;
+        const signature = c['CloudFront-Signature'] ?? c.CloudFrontSignature;
+        const keyPairId = c['CloudFront-Key-Pair-Id'] ?? c.CloudFrontKeyPairId;
         const parts = [];
-        if (c.CloudFrontPolicy) parts.push('Policy=' + encodeURIComponent(c.CloudFrontPolicy));
-        if (c.CloudFrontSignature) parts.push('Signature=' + encodeURIComponent(c.CloudFrontSignature));
-        if (c.CloudFrontKeyPairId) parts.push('Key-Pair-Id=' + encodeURIComponent(c.CloudFrontKeyPairId));
+        if (policy) parts.push('Policy=' + encodeURIComponent(policy));
+        if (signature) parts.push('Signature=' + encodeURIComponent(signature));
+        if (keyPairId) parts.push('Key-Pair-Id=' + encodeURIComponent(keyPairId));
         cloudfrontToken = parts.join('&');
         console.log('CloudFront auth success.');
         return true;
@@ -125,11 +123,9 @@ async function requestCloudFrontAuth() {
 
 // Build thumbnail URL with CloudFront Policy/Signature/Key-Pair-Id or token.
 function buildThumbnailUrl(thumbnailUrl) {
+    if (!cloudfrontToken) return thumbnailUrl;
     const separator = thumbnailUrl.includes('?') ? '&' : '?';
-    if (cloudfrontToken) {
-        return thumbnailUrl + separator + cloudfrontToken;
-    }
-    return thumbnailUrl + separator + 'token=' + encodeURIComponent(accessToken || '');
+    return thumbnailUrl + separator + cloudfrontToken;
 }
 
 // Login function
@@ -239,10 +235,13 @@ async function checkServerStatus() {
 // Fetch CSV schema from AWS S3
 async function fetchCsvSchema() {
     try {
-        const response = await fetch(CSV_SCHEMA_URL);
+        const url = cloudfrontToken
+            ? CSV_SCHEMA_URL + (CSV_SCHEMA_URL.includes('?') ? '&' : '?') + cloudfrontToken
+            : CSV_SCHEMA_URL;
+        const response = await fetch(url);
         if (response.ok) {
             csvSchema = await response.json();
-            console.log('CSV schema loaded successfully:', csvSchema);
+            // console.log('CSV schema loaded successfully:', csvSchema);
         } else {
             throw new Error('Failed to fetch CSV schema');
         }
@@ -551,9 +550,8 @@ function startStatusPolling() {
                 if (status.status === 'completed') {
                     showAlert('Processing completed successfully!', 'success');
                     console.log('Setting timeout to show completed section...');
-                    // Show completed section after 1 second delay
-                    setTimeout(() => {
-                        console.log('Timeout fired, calling showCompletedSection');
+                    // Show completed section after 1 second delay; refresh CloudFront token so thumbnail URL has valid auth
+                    setTimeout(async () => {
                         showCompletedSection(status);
                     }, 1000);
                 } else {
@@ -603,7 +601,8 @@ function updateStatusDisplay(status) {
 function showStatusSection() {
     // Hide the upload section and show only status section
     document.getElementById('uploadSection').style.display = 'none';
-    document.getElementById('statusSection').style.display = 'block';
+    const statusSection = document.getElementById('statusSection');
+    statusSection.style.display = 'block';
     
     // Update building ID highlight
     const buildingId = document.getElementById('buildingId').value || 'CEN047';
@@ -613,6 +612,20 @@ function showStatusSection() {
     const fileName = document.getElementById('ifcFile').files[0]?.name || `${buildingId}.ifc`;
     document.getElementById('spinnerFileName').textContent = fileName;
     document.getElementById('processingText').textContent = 'Processing...';
+    
+    // Force spinner animation to start (fixes no spin when section was display:none)
+    const largeSpinner = statusSection.querySelector('.large-spinner');
+    const spinnerContent = statusSection.querySelector('.spinner-content');
+    if (largeSpinner) {
+        largeSpinner.style.animation = 'none';
+        largeSpinner.offsetHeight;
+        largeSpinner.style.animation = '';
+    }
+    if (spinnerContent) {
+        spinnerContent.style.animation = 'none';
+        spinnerContent.offsetHeight;
+        spinnerContent.style.animation = '';
+    }
 }
 
 function showCompletedSection(status) {
@@ -679,6 +692,12 @@ function showLoading(show) {
     if (show) {
         loadingSection.style.display = 'flex';
         loadingSection.style.opacity = '0';
+        const overlaySpinner = loadingSection.querySelector('.spinner');
+        if (overlaySpinner) {
+            overlaySpinner.style.animation = 'none';
+            overlaySpinner.offsetHeight;
+            overlaySpinner.style.animation = '';
+        }
         setTimeout(() => {
             loadingSection.style.opacity = '1';
         }, 10);
@@ -1087,7 +1106,7 @@ function launchAreaMap() {
 function launchBim() {
     if (processingMetadata && processingMetadata.individualBimEndpoint) {
         const buildingId = document.getElementById('buildingId').value;
-        const baseVersion = processingMetadata.totalBIMversion || processingMetadata.buildingVersion || '1';
+        const baseVersion = processingMetadata.totalBIMversion;
         const version = (parseInt(baseVersion) + 1).toString();
         // Add token parameter to individualBimEndpoint
         const bimUrl = processingMetadata.individualBimEndpoint + 

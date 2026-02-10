@@ -680,14 +680,14 @@ small {
     margin: 32px 0;
 }
 
-/* Large Spinning Loader */
+/* Large Spinning Loader - !important overrides Pico/reduced-motion so loading state is visible */
 .large-spinner {
     width: 200px;
     height: 200px;
     border: 8px solid var(--border-light);
     border-top: 8px solid var(--primary-blue);
     border-radius: 50%;
-    animation: spin 2s linear infinite;
+    animation: spin 2s linear infinite !important;
     position: relative;
 }
 
@@ -702,7 +702,7 @@ small {
     align-items: center;
     gap: 8px;
     z-index: 2;
-    animation: counter-spin 2s linear infinite;
+    animation: counter-spin 2s linear infinite !important;
 }
 
 /* File Icon */
@@ -1143,7 +1143,7 @@ small {
     border: 2px solid var(--border-light);
     border-top: 2px solid var(--primary-blue);
     border-radius: 50%;
-    animation: spin 1s linear infinite;
+    animation: spin 1s linear infinite !important;
     margin: 0 auto 16px;
 }
 
