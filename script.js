@@ -1096,7 +1096,9 @@ function showThumbnail(thumbnailUrl) {
 // Launch area map page
 function launchAreaMap() {
     if (processingMetadata && processingMetadata.areaBimEndpoint) {
-        window.open(processingMetadata.areaBimEndpoint, '_blank');
+        const url = processingMetadata.areaBimEndpoint;
+        const separator = url.includes('?') ? '&' : '?';
+        window.open(url + separator + 'token=' + encodeURIComponent(accessToken || ''), '_blank');
     } else {
         showAlert('Area map endpoint not available', 'error');
     }
